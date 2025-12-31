@@ -157,22 +157,50 @@ def balance_enquiry():
         print("Account not found")
 
 # ----------------------------------------------------
-
 def calculate_interest():
     acc = input("Account Number: ")
-    rate = 5
 
-    cur.execute("SELECT balance,status FROM accounts WHERE acc_no=%s", (acc,))
+    cur.execute(
+        "SELECT balance, status, acc_type FROM accounts WHERE acc_no=%s",
+        (acc,)
+    )
     d = cur.fetchone()
 
     if not d or d[1] == "Closed":
         print("Invalid / Closed Account")
         return
 
-    interest = (float(d[0]) * rate) / 100
-    cur.execute("UPDATE accounts SET balance=balance+%s WHERE acc_no=%s", (interest, acc))
+    balance = float(d[0])
+    acc_type = d[2]
+
+    # Interest rates as per 1 Oct 2025 – 31 Dec 2025
+    if acc_type == "SB":
+        rate = 4.0
+        months = int(input("Enter number of months balance was maintained: "))
+
+    elif acc_type == "TD":
+        rate = 6.9
+        months = int(input("Enter deposit period in months: "))
+
+    else:
+        print("Interest calculation not applicable here")
+        return
+
+    time_years = months / 12
+
+    amount = balance * ((1 + rate / 100) ** time_years)
+    interest = amount - balance
+
+    cur.execute(
+        "UPDATE accounts SET balance=%s WHERE acc_no=%s",
+        (amount, acc)
+    )
     con.commit()
-    print("Interest Added:", interest)
+
+    print("Compound Interest Applied")
+    print("Interest:", round(interest, 2))
+    print("Updated Balance:", round(amount, 2))
+
 
 # ----------------------------------------------------
 
@@ -236,36 +264,14 @@ def close_account():
     print("Account Closed")
 
 # ================= RD SCHEME =================
-
 def rd_monthly_deposit():
     acc = input("RD Account Number: ")
 
     cur.execute("""
-        SELECT r.monthly_amount,a.status
-        FROM rd_details r JOIN accounts a ON r.acc_no=a.acc_no
+        SELECT r.monthly_amount, r.months_completed, a.status
+        FROM rd_details r
+        JOIN accounts a ON r.acc_no = a.acc_no
         WHERE r.acc_no=%s
-    """, (acc,))
-    d = cur.fetchone()
-
-    if not d or d[1] == "Closed":
-        print("Invalid / Closed RD Account")
-        return
-
-    cur.execute("UPDATE accounts SET balance=balance+%s WHERE acc_no=%s", (d[0], acc))
-    cur.execute("UPDATE rd_details SET months_completed=months_completed+1 WHERE acc_no=%s", (acc,))
-    con.commit()
-    print("RD Monthly Deposit Successful")
-
-# ----------------------------------------------------
-
-def rd_compound_interest():
-    acc = input("RD Account Number: ")
-    rate = 5.8
-
-    cur.execute("""
-        SELECT a.balance,r.months_completed,a.status
-        FROM accounts a JOIN rd_details r ON a.acc_no=r.acc_no
-        WHERE a.acc_no=%s
     """, (acc,))
     d = cur.fetchone()
 
@@ -273,16 +279,88 @@ def rd_compound_interest():
         print("Invalid / Closed RD Account")
         return
 
-    balance = float(d[0])
-    months = d[1]
-    t = months / 12
+    monthly_amount = float(d[0])
 
-    maturity = balance * ((1 + rate/100) ** t)
-    cur.execute("UPDATE accounts SET balance=%s WHERE acc_no=%s", (maturity, acc))
+    try:
+        installments = int(input("Enter number of installments to deposit: "))
+        if installments <= 0:
+            print("Invalid number of installments")
+            return
+    except:
+        print("Invalid input")
+        return
+
+    total_deposit = monthly_amount * installments
+
+    # Update balance
+    cur.execute(
+        "UPDATE accounts SET balance = balance + %s WHERE acc_no = %s",
+        (total_deposit, acc)
+    )
+
+    # Update installments
+    cur.execute(
+        "UPDATE rd_details SET months_completed = months_completed + %s WHERE acc_no = %s",
+        (installments, acc)
+    )
+
     con.commit()
 
-    print("RD Compound Interest Applied")
-    print("Maturity Amount:", round(maturity,2))
+    print("RD Deposit Successful")
+    print("Installments Deposited:", installments)
+    print("Amount Deposited:", total_deposit)
+
+
+# ----------------------------------------------------
+
+def rd_compound_interest():
+    acc = input("RD Account Number: ")
+    rate = 6.7
+
+    cur.execute("""
+        SELECT r.monthly_amount, r.months_completed, a.status
+        FROM rd_details r
+        JOIN accounts a ON r.acc_no = a.acc_no
+        WHERE r.acc_no=%s
+    """, (acc,))
+    d = cur.fetchone()
+
+    if not d or d[2] == "Closed":
+        print("Invalid / Closed RD Account")
+        return
+
+    monthly = float(d[0])
+    months_completed = d[1]
+
+    # ❌ Less than 36 months → no interest
+    if months_completed < 36:
+        print("RD interest is not applicable before 36 months")
+        return
+
+    # ⚠️ Premature closure
+    if months_completed < 60:
+        print("Premature RD Closure")
+        print("Full RD interest rate is applicable only after 60 installments")
+        return
+
+    # ✅ RD MATURITY (60 months)
+    total_deposit = monthly * 60
+    time_years = 5
+
+    maturity_amount = total_deposit * ((1 + rate / 100) ** time_years)
+    interest = maturity_amount - total_deposit
+
+    cur.execute(
+        "UPDATE accounts SET balance=%s WHERE acc_no=%s",
+        (maturity_amount, acc)
+    )
+    con.commit()
+
+    print("RD Maturity Completed (60 Installments)")
+    print("Total Deposits:", total_deposit)
+    print("Interest @ 6.7%:", round(interest, 2))
+    print("Maturity Amount:", round(maturity_amount, 2))
+
 
 # ----------------------------------------------------
 
@@ -332,17 +410,48 @@ def rd_to_sb_transfer():
     rd = input("RD Account Number: ")
     sb = input("SB Account Number: ")
 
-    cur.execute("SELECT balance,status FROM accounts WHERE acc_no=%s AND acc_type='RD'", (rd,))
-    r = cur.fetchone()
+    # 🔍 Validate RD account
+    cur.execute(
+        "SELECT balance, status FROM accounts WHERE acc_no=%s AND acc_type='RD'",
+        (rd,)
+    )
+    rd_data = cur.fetchone()
 
-    if not r or r[1] == "Closed":
-        print("Invalid RD Account")
+    if not rd_data or rd_data[1] == "Closed":
+        print("Invalid / Closed RD Account")
         return
 
-    cur.execute("UPDATE accounts SET balance=balance+%s WHERE acc_no=%s", (r[0], sb))
-    cur.execute("UPDATE accounts SET balance=0,status='Closed' WHERE acc_no=%s", (rd,))
+    rd_balance = float(rd_data[0])
+
+    # 🔍 Validate SB account
+    cur.execute(
+        "SELECT status FROM accounts WHERE acc_no=%s AND acc_type='SB'",
+        (sb,)
+    )
+    sb_data = cur.fetchone()
+
+    if not sb_data:
+        print("Invalid SB Account Number")
+        return
+
+    if sb_data[0] == "Closed":
+        print("SB Account is closed")
+        return
+
+    # ✅ Perform transfer
+    cur.execute(
+        "UPDATE accounts SET balance = balance + %s WHERE acc_no = %s",
+        (rd_balance, sb)
+    )
+    cur.execute(
+        "UPDATE accounts SET balance = 0, status = 'Closed' WHERE acc_no = %s",
+        (rd,)
+    )
+
     con.commit()
-    print("RD Maturity Amount Transferred to SB")
+
+    print("RD Maturity Amount Transferred to SB Successfully")
+
 
 # ================= SCHEME MENUS =================
 
