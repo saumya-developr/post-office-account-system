@@ -78,21 +78,44 @@ def create_account():
     print("Account Number:", acc_no)
 
 # ----------------------------------------------------
-
 def deposit():
     acc = input("Account Number: ")
-    amt = float(input("Amount: "))
 
-    cur.execute("SELECT status FROM accounts WHERE acc_no=%s", (acc,))
+    cur.execute(
+        "SELECT status, acc_type FROM accounts WHERE acc_no=%s",
+        (acc,)
+    )
     d = cur.fetchone()
 
-    if not d or d[0] == "Closed":
-        print("Invalid / Closed Account")
+    if not d:
+        print("Account not found")
         return
 
-    cur.execute("UPDATE accounts SET balance=balance+%s WHERE acc_no=%s", (amt, acc))
+    status, acc_type = d
+
+    if status == "Closed":
+        print("Account is closed")
+        return
+
+    # 🔒 SCHEME VALIDATION FIRST
+    if acc_type != "SB":
+        print("Deposit allowed only in SB accounts")
+        return
+
+    # ✅ AMOUNT TAB HI POOCHO
+    try:
+        amt = float(input("Amount: "))
+    except:
+        print("Invalid amount")
+        return
+
+    cur.execute(
+        "UPDATE accounts SET balance = balance + %s WHERE acc_no=%s",
+        (amt, acc)
+    )
     con.commit()
-    print("Deposit Successful")
+    print("SB Deposit Successful")
+
 
 # ----------------------------------------------------
 
@@ -154,16 +177,55 @@ def calculate_interest():
 # ----------------------------------------------------
 
 def search_account():
-    mobile = input("Mobile Number: ")
-    cur.execute("SELECT acc_no,name,acc_type,balance FROM accounts WHERE mobile=%s", (mobile,))
-    rows = cur.fetchall()
+    while True:
+        print("""
+--- SEARCH ACCOUNT ---
+1. Search by Name
+2. Search by Account Number
+3. Search by Mobile Number
+0. Back
+""")
+        ch = input("Enter Choice: ")
 
-    if not rows:
-        print("No accounts found")
-        return
+        if ch == '1':
+            name = input("Enter Name: ")
+            cur.execute(
+                "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE name LIKE %s",
+                ('%' + name + '%',)
+            )
+            rows = cur.fetchall()
 
-    for r in rows:
-        print(r)
+        elif ch == '2':
+            acc = input("Enter Account Number: ")
+            cur.execute(
+                "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE acc_no=%s",
+                (acc,)
+            )
+            rows = cur.fetchall()
+
+        elif ch == '3':
+            mobile = input("Enter Mobile Number: ")
+            cur.execute(
+                "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE mobile=%s",
+                (mobile,)
+            )
+            rows = cur.fetchall()
+
+        elif ch == '0':
+            break
+
+        else:
+            print("Invalid Choice")
+            continue
+
+        if not rows:
+            print("No account found")
+        else:
+            print("\nACC NO | NAME | TYPE | BALANCE | STATUS")
+            print("----------------------------------------")
+            for r in rows:
+                print(r)
+
 
 # ----------------------------------------------------
 
@@ -229,27 +291,40 @@ def rd_schedule():
     rate = 5.8
 
     cur.execute("""
-        SELECT a.balance,r.months_completed,r.monthly_amount,a.status
-        FROM accounts a JOIN rd_details r ON a.acc_no=r.acc_no
-        WHERE a.acc_no=%s
+        SELECT r.months_completed, r.monthly_amount, a.status
+        FROM rd_details r
+        JOIN accounts a ON r.acc_no = a.acc_no
+        WHERE r.acc_no=%s
     """, (acc,))
-    d = cur.fetchone()
+    data = cur.fetchone()
 
-    if not d or d[3] == "Closed":
+    if not data or data[2] == "Closed":
         print("Invalid / Closed RD Account")
         return
 
-    balance = float(d[0])
-    months = d[1]
-    monthly = float(d[2])
+    months, monthly, _ = data
+    monthly = float(monthly)
+
+    balance = 0.0
 
     print("\nMONTH | DEPOSIT | INTEREST | BALANCE")
     print("------------------------------------")
 
     for m in range(1, months + 1):
+        balance += monthly                  # deposit once per month
         interest = (balance * rate) / (12 * 100)
-        balance = balance + interest + monthly
-        print(m, "|", monthly, "|", round(interest,2), "|", round(balance,2))
+        balance += interest
+
+        print(
+            m,
+            "|",
+            monthly,
+            "|",
+            round(interest, 2),
+            "|",
+            round(balance, 2)
+        )
+
 
 # ----------------------------------------------------
 
