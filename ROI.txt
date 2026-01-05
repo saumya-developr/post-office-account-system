@@ -1,3 +1,4 @@
+interest rates w.e.f January 26 - April 26
 sb=4.0
 td=6.9
 rd=6.7
