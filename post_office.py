@@ -121,26 +121,50 @@ def deposit():
 
 def withdraw():
     acc = input("Account Number: ")
-    amt = float(input("Amount: "))
 
-    cur.execute("SELECT balance,acc_type,status FROM accounts WHERE acc_no=%s", (acc,))
+    cur.execute(
+        "SELECT balance, acc_type, status FROM accounts WHERE acc_no=%s",
+        (acc,)
+    )
     d = cur.fetchone()
 
-    if not d or d[2] == "Closed":
-        print("Invalid / Closed Account")
+    if not d:
+        print("Account not found")
         return
 
-    balance = float(d[0])
-    acc_type = d[1]
-    min_bal = 500 if acc_type == "SB" else 0
+    balance, acc_type, status = d
 
-    if balance - amt < min_bal:
-        print("Minimum balance rule violated")
+    if status == "Closed":
+        print("Account is closed")
         return
 
-    cur.execute("UPDATE accounts SET balance=balance-%s WHERE acc_no=%s", (amt, acc))
+    # 🔒 Withdraw only from SB
+    if acc_type != "SB":
+        print("Withdrawal allowed only from SB accounts")
+        return
+
+    # ✅ Amount tab hi poochho
+    try:
+        amt = float(input("Amount: "))
+        if amt <= 0:
+            print("Invalid amount")
+            return
+    except:
+        print("Invalid amount")
+        return
+
+    if balance - amt < 500:
+        print("Minimum balance of 500 must be maintained")
+        return
+
+    cur.execute(
+        "UPDATE accounts SET balance = balance - %s WHERE acc_no=%s",
+        (amt, acc)
+    )
     con.commit()
+
     print("Withdrawal Successful")
+
 
 # ----------------------------------------------------
 
@@ -259,9 +283,31 @@ def search_account():
 
 def close_account():
     acc = input("Account Number: ")
-    cur.execute("UPDATE accounts SET status='Closed' WHERE acc_no=%s", (acc,))
+
+    # 🔍 Check account existence
+    cur.execute(
+        "SELECT status FROM accounts WHERE acc_no=%s",
+        (acc,)
+    )
+    d = cur.fetchone()
+
+    if not d:
+        print("Invalid Account Number")
+        return
+
+    if d[0] == "Closed":
+        print("Account is already closed")
+        return
+
+    # ✅ Close account
+    cur.execute(
+        "UPDATE accounts SET status='Closed' WHERE acc_no=%s",
+        (acc,)
+    )
     con.commit()
-    print("Account Closed")
+
+    print("Account Closed Successfully")
+
 
 # ================= RD SCHEME =================
 def rd_monthly_deposit():
