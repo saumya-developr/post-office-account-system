@@ -102,7 +102,7 @@ def deposit():
         print("Deposit allowed only in SB accounts")
         return
 
-    # ✅ AMOUNT TAB HI POOCHO
+    # ✅ AMOUNT CONDITION
     try:
         amt = float(input("Amount: "))
     except:
@@ -143,7 +143,7 @@ def withdraw():
         print("Withdrawal allowed only from SB accounts")
         return
 
-    # ✅ Amount tab hi poochho
+    # ✅ Amount Condition
     try:
         amt = float(input("Amount: "))
         if amt <= 0:
