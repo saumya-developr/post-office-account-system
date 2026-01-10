@@ -1,6 +1,7 @@
 import mysql.connector
 import random
 import math
+from decimal import Decimal
 
 # ================= DATABASE CONNECTION =================
 print("Program started")
@@ -119,6 +120,7 @@ def deposit():
 
 # ----------------------------------------------------
 
+
 def withdraw():
     acc = input("Account Number: ")
 
@@ -138,14 +140,12 @@ def withdraw():
         print("Account is closed")
         return
 
-    # 🔒 Withdraw only from SB
     if acc_type != "SB":
         print("Withdrawal allowed only from SB accounts")
         return
 
-    # ✅ Amount Condition
     try:
-        amt = float(input("Amount: "))
+        amt = Decimal(input("Amount: "))
         if amt <= 0:
             print("Invalid amount")
             return
@@ -153,7 +153,13 @@ def withdraw():
         print("Invalid amount")
         return
 
-    if balance - amt < 500:
+    balance = Decimal(balance)
+
+    if balance < amt:
+        print("Insufficient balance")
+        return
+
+    if balance - amt < Decimal("500"):
         print("Minimum balance of 500 must be maintained")
         return
 
@@ -164,6 +170,7 @@ def withdraw():
     con.commit()
 
     print("Withdrawal Successful")
+
 
 
 # ----------------------------------------------------
@@ -358,10 +365,11 @@ def rd_monthly_deposit():
 
 
 # ----------------------------------------------------
+from decimal import Decimal
 
 def rd_compound_interest():
     acc = input("RD Account Number: ")
-    rate = 6.7
+    rate = Decimal("6.7")   # RD rate
 
     cur.execute("""
         SELECT r.monthly_amount, r.months_completed, a.status
@@ -375,37 +383,39 @@ def rd_compound_interest():
         print("Invalid / Closed RD Account")
         return
 
-    monthly = float(d[0])
-    months_completed = d[1]
+    monthly = Decimal(d[0])
+    months = d[1]
 
     # ❌ Less than 36 months → no interest
-    if months_completed < 36:
+    if months < 36:
         print("RD interest is not applicable before 36 months")
         return
 
-    # ⚠️ Premature closure
-    if months_completed < 60:
-        print("Premature RD Closure")
-        print("Full RD interest rate is applicable only after 60 installments")
-        return
+    # ⚠️ Premature (36–59 months)
+    if months < 60:
+        print("Premature RD Closure – reduced interest applicable")
 
-    # ✅ RD MATURITY (60 months)
-    total_deposit = monthly * 60
-    time_years = 5
+    balance = Decimal("0")
 
-    maturity_amount = total_deposit * ((1 + rate / 100) ** time_years)
-    interest = maturity_amount - total_deposit
+    for m in range(1, months + 1):
+        balance += monthly
+        interest = (balance * rate) / Decimal("1200")
+        balance += interest
+
+    interest_earned = balance - (monthly * months)
 
     cur.execute(
         "UPDATE accounts SET balance=%s WHERE acc_no=%s",
-        (maturity_amount, acc)
+        (balance, acc)
     )
     con.commit()
 
-    print("RD Maturity Completed (60 Installments)")
-    print("Total Deposits:", total_deposit)
-    print("Interest @ 6.7%:", round(interest, 2))
-    print("Maturity Amount:", round(maturity_amount, 2))
+    print("RD Interest Applied Successfully")
+    print("Total Installments:", months)
+    print("Total Deposits:", monthly * months)
+    print("Interest Earned:", round(interest_earned, 2))
+    print("Maturity Amount:", round(balance, 2))
+
 
 
 # ----------------------------------------------------
@@ -452,53 +462,140 @@ def rd_schedule():
 
 # ----------------------------------------------------
 
+from decimal import Decimal
+
 def rd_to_sb_transfer():
     rd = input("RD Account Number: ")
     sb = input("SB Account Number: ")
 
-    # 🔍 Validate RD account
-    cur.execute(
-        "SELECT balance, status FROM accounts WHERE acc_no=%s AND acc_type='RD'",
-        (rd,)
-    )
+    rate = Decimal("6.7")
+
+    # Fetch RD details
+    cur.execute("""
+        SELECT r.monthly_amount, r.months_completed, a.balance, a.status
+        FROM rd_details r
+        JOIN accounts a ON r.acc_no = a.acc_no
+        WHERE r.acc_no=%s AND a.acc_type='RD'
+    """, (rd,))
     rd_data = cur.fetchone()
 
-    if not rd_data or rd_data[1] == "Closed":
+    if not rd_data or rd_data[3] == "Closed":
         print("Invalid / Closed RD Account")
         return
 
-    rd_balance = float(rd_data[0])
+    monthly = Decimal(rd_data[0])
+    months = rd_data[1]
 
-    # 🔍 Validate SB account
+    if months < 36:
+        print("RD cannot be closed before 36 months")
+        return
+
+    # 🔥 ALWAYS calculate RD interest here
+    balance = Decimal("0")
+
+    for m in range(1, months + 1):
+        balance += monthly
+        interest = (balance * rate) / Decimal("1200")
+        balance += interest
+
+    # Validate SB account
     cur.execute(
         "SELECT status FROM accounts WHERE acc_no=%s AND acc_type='SB'",
         (sb,)
     )
     sb_data = cur.fetchone()
 
-    if not sb_data:
-        print("Invalid SB Account Number")
+    if not sb_data or sb_data[0] == "Closed":
+        print("Invalid / Closed SB Account")
         return
 
-    if sb_data[0] == "Closed":
-        print("SB Account is closed")
-        return
-
-    # ✅ Perform transfer
+    # Transfer to SB
     cur.execute(
-        "UPDATE accounts SET balance = balance + %s WHERE acc_no = %s",
-        (rd_balance, sb)
+        "UPDATE accounts SET balance = balance + %s WHERE acc_no=%s",
+        (balance, sb)
     )
+
+    # Close RD
     cur.execute(
-        "UPDATE accounts SET balance = 0, status = 'Closed' WHERE acc_no = %s",
+        "UPDATE accounts SET balance = 0, status='Closed' WHERE acc_no=%s",
         (rd,)
     )
 
     con.commit()
 
-    print("RD Maturity Amount Transferred to SB Successfully")
+    print("RD Maturity Transfer Successful")
+    print("Installments:", months)
+    print("Total Deposits:", monthly * months)
+    print("Maturity Amount (with interest):", round(balance, 2))
 
 
+
+
+
+#td maturity
+
+from decimal import Decimal
+
+def td_maturity_transfer():
+    td = input("TD Account Number: ")
+    sb = input("SB Account Number to credit maturity amount: ")
+
+    rate = Decimal("6.9")   # TD ROI
+    months = 12             # TD fixed for 1 year
+
+    # Fetch TD account
+    cur.execute("""
+        SELECT balance, status
+        FROM accounts
+        WHERE acc_no=%s AND acc_type='TD'
+    """, (td,))
+    td_data = cur.fetchone()
+
+    if not td_data or td_data[1] == "Closed":
+        print("Invalid / Closed TD Account")
+        return
+
+    principal = Decimal(td_data[0])
+
+    # Fetch SB account
+    cur.execute("""
+        SELECT status
+        FROM accounts
+        WHERE acc_no=%s AND acc_type='SB'
+    """, (sb,))
+    sb_data = cur.fetchone()
+
+    if not sb_data or sb_data[0] == "Closed":
+        print("Invalid / Closed SB Account")
+        return
+
+    # Compound interest for 1 year
+    time_years = Decimal(months) / Decimal(12)
+    maturity_amount = principal * ((1 + rate / 100) ** time_years)
+    interest = maturity_amount - principal
+
+    # Credit SB
+    cur.execute(
+        "UPDATE accounts SET balance = balance + %s WHERE acc_no=%s",
+        (maturity_amount, sb)
+    )
+
+    # Close TD
+    cur.execute(
+        "UPDATE accounts SET balance = 0, status='Closed' WHERE acc_no=%s",
+        (td,)
+    )
+
+    con.commit()
+
+    print("TD Maturity Transfer Successful")
+    print("Principal:", principal)
+    print("Interest @ 6.9%:", round(interest, 2))
+    print("Amount credited to SB:", round(maturity_amount, 2))
+
+
+
+    
 # ================= SCHEME MENUS =================
 
 def rd_menu():
@@ -545,7 +642,7 @@ def td_menu():
 """)
         ch = input("Choice: ")
         if ch == '1': calculate_interest()
-        elif ch == '2': close_account()
+        elif ch == '2': td_maturity_transfer()
         elif ch == '0': break
 
 def schemes_menu():
@@ -562,6 +659,11 @@ def schemes_menu():
         elif ch == '2': sb_menu()
         elif ch == '3': td_menu()
         elif ch == '0': break
+
+
+
+
+
 
 # ================= MAIN MENU =================
 
