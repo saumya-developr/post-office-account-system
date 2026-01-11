@@ -26,7 +26,10 @@ except:
 
 def generate_account_number(acc_type):
     prefix = {"SB": "010", "RD": "020", "TD": "030"}
+    if acc_type not in prefix:
+        return None
     return prefix[acc_type] + str(random.randint(1000000, 9999999))
+
 
 def is_valid_mobile(mobile):
     return mobile.isdigit() and len(mobile) == 10
@@ -34,49 +37,100 @@ def is_valid_mobile(mobile):
 # ================= BASIC OPERATIONS =================
 
 def create_account():
-    name = input("Name: ")
-    address = input("Address: ")
+    print("\n=== CREATE NEW ACCOUNT ===")
 
-    mobile = input("Mobile Number: ")
-    if not is_valid_mobile(mobile):
-        print("Invalid phone number")
+    name = input("Name: ").strip()
+    if not name:
+        print("❌ Name cannot be empty")
         return
 
-    acc_type = input("Account Type (SB/RD/TD): ").upper()
+    address = input("Address: ").strip()
+    if not address:
+        print("❌ Address cannot be empty")
+        return
+
+    mobile = input("Mobile Number: ").strip()
+    if not is_valid_mobile(mobile):
+        print("❌ Invalid phone number (must be 10 digits)")
+        return
+
+    # ✅ SAFE ACCOUNT TYPE INPUT
+    while True:
+        acc_type = input("Account Type (SB / RD / TD): ").upper().strip()
+        if acc_type in ("SB", "RD", "TD"):
+            break
+        print("❌ Invalid account type. Please enter SB, RD or TD.")
+
     acc_no = generate_account_number(acc_type)
 
+    # ================= SCHEME LOGIC =================
+
     if acc_type == "SB":
-        balance = float(input("Opening Balance (Min 500): "))
-        if balance < 500:
-            print("Minimum opening balance for SB is 500")
+        try:
+            balance = float(input("Opening Balance (Min 500): "))
+            if balance < 500:
+                print("❌ Minimum opening balance for SB is 500")
+                return
+        except:
+            print("❌ Invalid amount")
             return
 
     elif acc_type == "RD":
-        monthly = float(input("Monthly RD Amount: "))
-        balance = monthly        # first installment
+        try:
+            monthly = float(input("Monthly RD Amount: "))
+            if monthly <= 0:
+                print("❌ Invalid RD amount")
+                return
+        except:
+            print("❌ Invalid amount")
+            return
+
+        balance = monthly          # first installment credited
         months = 1
 
     elif acc_type == "TD":
-        balance = float(input("TD Lump Sum Amount: "))
+        try:
+            balance = float(input("TD Lump Sum Amount: "))
+            if balance <= 0:
+                print("❌ Invalid TD amount")
+                return
+        except:
+            print("❌ Invalid amount")
+            return
 
-    else:
-        print("Invalid account type")
-        return
+    # ================= DATABASE INSERT =================
 
-    cur.execute(
-        "INSERT INTO accounts VALUES (%s,%s,%s,%s,%s,%s,'Active')",
-        (acc_no, name, address, mobile, acc_type, balance)
-    )
-
-    if acc_type == "RD":
+    try:
         cur.execute(
-            "INSERT INTO rd_details VALUES (%s,%s,%s)",
-            (acc_no, monthly, months)
+            """
+            INSERT INTO accounts
+            (acc_no, name, address, mobile, acc_type, balance, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'Active')
+            """,
+            (acc_no, name, address, mobile, acc_type, balance)
         )
 
-    con.commit()
-    print("Account Created Successfully")
-    print("Account Number:", acc_no)
+        if acc_type == "RD":
+            cur.execute(
+                """
+                INSERT INTO rd_details
+                (acc_no, monthly_amount, months_completed)
+                VALUES (%s, %s, %s)
+                """,
+                (acc_no, monthly, months)
+            )
+
+        con.commit()
+
+        print("\n✅ Account Created Successfully")
+        print("Account Number:", acc_no)
+        print("Account Type:", acc_type)
+        print("Opening Balance:", balance)
+
+    except Exception as e:
+        con.rollback()
+        print("❌ Error creating account:", e)
+
 
 # ----------------------------------------------------
 def deposit():
