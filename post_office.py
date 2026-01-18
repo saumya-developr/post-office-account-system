@@ -2,6 +2,8 @@ import mysql.connector
 import random
 import math
 from decimal import Decimal
+import webbrowser
+import os
 
 # ================= DATABASE CONNECTION =================
 print("Program started")
@@ -23,6 +25,67 @@ except:
     exit()
 
 # ================= UTILITY FUNCTIONS =================
+
+FORMS_LOCAL = {
+    "SB-3 (Savings Account Opening Form)": "forms/sb3.pdf",
+    "RD Account Opening Form": "forms/sb3.pdf",
+    "TD Account Opening Form": "forms/sb3.pdf",
+    "Deposit Slip (SB/RD/TD)": "forms/sb103.pdf",
+    "Withdrawal Form (SB/RD/TD)": "forms/sb7.pdf",
+    "Account Closure Form (SB)": "forms/sb7a.pdf",
+    "Account Closure Form (RD)": "forms/sb7a.pdf",
+    "Account Closure Form (TD)": "forms/sb7a.pdf"
+}
+
+
+
+def forms_menu():
+    while True:
+        print("\n=== POST OFFICE FORMS ===")
+
+        form_names = list(FORMS_LOCAL.keys())
+
+        for i, form_name in enumerate(form_names, start=1):
+            print(f"{i}. {form_name}")
+
+        print("0. Back")
+
+        choice = input("Enter choice: ").strip()
+
+        if choice == "0":
+            break
+
+        if not choice.isdigit():
+            print("❌ Invalid input. Please enter a number.")
+            continue
+
+        idx = int(choice)
+
+        if idx < 1 or idx > len(form_names):
+            print("❌ Invalid choice. Please select valid form number.")
+            continue
+
+        selected_form = form_names[idx - 1]
+        relative_path = FORMS_LOCAL[selected_form]
+
+        # ✅ Make absolute path (safe)
+        abs_path = os.path.abspath(relative_path)
+
+        if not os.path.exists(abs_path):
+            print("❌ Form file not found!")
+            print("Expected path:", abs_path)
+            print("✅ Please keep the PDF inside the 'forms' folder.")
+            continue
+
+        print(f"\n✅ Opening Form: {selected_form}")
+        print("📄 File:", abs_path)
+
+        # Open PDF in default viewer/browser
+        webbrowser.open("file://" + abs_path)
+
+
+
+
 
 def generate_account_number(acc_type):
     prefix = {"SB": "010", "RD": "020", "TD": "030"}
@@ -732,6 +795,7 @@ while True:
 6. Search Account
 7. Close Account
 8. Schemes Menu
+9. Post Office Forms
 0. Exit
 """)
 
@@ -745,6 +809,7 @@ while True:
     elif ch == '6': search_account()
     elif ch == '7': close_account()
     elif ch == '8': schemes_menu()
+    elif ch == '9': forms_menu()
     elif ch == '0':
         print("Thank You")
         break
