@@ -4,6 +4,9 @@ import math
 from decimal import Decimal
 import webbrowser
 import os
+import hashlib
+import getpass
+
 
 # ================= DATABASE CONNECTION =================
 print("Program started")
@@ -36,6 +39,61 @@ FORMS_LOCAL = {
     "Account Closure Form (RD)": "forms/sb7a.pdf",
     "Account Closure Form (TD)": "forms/sb7a.pdf"
 }
+
+
+
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+
+def is_valid_aadhaar(aadhaar):
+    return aadhaar.isdigit() and len(aadhaar) == 12
+
+
+
+def generate_customer_id():
+    # 10 digit numeric customer id
+    return str(random.randint(1000000000, 9999999999))
+
+def login():
+    print("\n=== POST OFFICE LOGIN ===")
+
+    for attempt in range(1, 4):
+        username = input("Username: ").strip()
+
+        # ✅ Hide password typing
+        password = getpass.getpass("Password: ").strip()
+
+        if not username or not password:
+            print("❌ Username/Password cannot be empty")
+            continue
+
+        password_hash = hash_password(password)
+
+        cur.execute("""
+            SELECT role, status
+            FROM users
+            WHERE username=%s AND password_hash=%s
+        """, (username, password_hash))
+
+        user = cur.fetchone()
+
+        if user:
+            role, status = user
+            if status != "ACTIVE":
+                print("❌ Your account is inactive. Contact admin.")
+                return None
+
+            print(f"\n✅ Login Successful! Role: {role}")
+            return {"username": username, "role": role}
+
+        else:
+            print(f"❌ Invalid credentials (Attempt {attempt}/3)")
+
+    print("\n🚫 Too many failed attempts. Exiting program.")
+    return None
 
 
 
@@ -86,48 +144,136 @@ def forms_menu():
 
 
 
-
 def generate_account_number(acc_type):
     prefix = {"SB": "010", "RD": "020", "TD": "030"}
-    if acc_type not in prefix:
-        return None
-    return prefix[acc_type] + str(random.randint(1000000, 9999999))
+    return prefix[acc_type] + str(random.randint(100000000, 999999999))
+
+
 
 
 def is_valid_mobile(mobile):
     return mobile.isdigit() and len(mobile) == 10
 
-# ================= BASIC OPERATIONS =================
+def get_or_create_customer():
+    print("\n=== CUSTOMER IDENTIFICATION ===")
 
+    customer_id = input("Enter Customer ID (10 digits) OR press Enter for NEW customer: ").strip()
+
+    # ✅ CASE 1: Customer ID is given → fetch details directly
+    if customer_id != "":
+        if not (customer_id.isdigit() and len(customer_id) == 10):
+            print("❌ Invalid Customer ID (must be 10 digits)")
+            return None
+
+        cur.execute(
+            "SELECT customer_id, aadhaar, name, address, mobile FROM customers WHERE customer_id=%s",
+            (customer_id,)
+        )
+        data = cur.fetchone()
+
+        if not data:
+            print("❌ Customer ID not found")
+            return None
+
+        print("\n✅ CUSTOMER FOUND")
+        print("Customer ID (CIF):", data[0])
+        print("Aadhaar:", data[1])
+        print("Name:", data[2])
+        print("Address:", data[3])
+        print("Mobile:", data[4])
+
+        return data[0]
+
+    # ✅ CASE 2: Customer ID not given → create NEW customer
+    print("\n🆕 New Customer Registration")
+
+    name = input("Customer Name: ").strip()
+    address = input("Customer Address: ").strip()
+    mobile = input("Customer Mobile (10 digits): ").strip()
+    aadhaar = input("Customer Aadhaar (12 digits): ").strip()
+
+    if not name or not address:
+        print("❌ Name/Address cannot be empty")
+        return None
+
+    if not is_valid_mobile(mobile):
+        print("❌ Invalid mobile number (must be 10 digits)")
+        return None
+
+    if not is_valid_aadhaar(aadhaar):
+        print("❌ Invalid Aadhaar number (must be 12 digits)")
+        return None
+
+    # ✅ Aadhaar already exists → same CIF return (no duplicate customer)
+    cur.execute("SELECT customer_id, name FROM customers WHERE aadhaar=%s", (aadhaar,))
+    existing = cur.fetchone()
+
+    if existing:
+        print("\n⚠️ Aadhaar already exists!")
+        print("Existing Customer:", existing[1])
+        print("Customer ID (CIF):", existing[0])
+        return existing[0]
+
+    # ✅ Generate unique customer id
+    while True:
+        new_cif = generate_customer_id()
+        cur.execute("SELECT customer_id FROM customers WHERE customer_id=%s", (new_cif,))
+        if not cur.fetchone():
+            break
+
+    # ✅ Insert new customer
+    cur.execute(
+        "INSERT INTO customers (customer_id, aadhaar, name, address, mobile) VALUES (%s,%s,%s,%s,%s)",
+        (new_cif, aadhaar, name, address, mobile)
+    )
+    con.commit()
+
+    print("\n✅ New Customer Created Successfully!")
+    print("Customer ID (CIF):", new_cif)
+
+    return new_cif
+
+# ================= BASIC OPERATIONS =================
 def create_account():
     print("\n=== CREATE NEW ACCOUNT ===")
 
-    name = input("Name: ").strip()
-    if not name:
-        print("❌ Name cannot be empty")
+    # ✅ Aadhaar-based customer system
+    customer_id = get_or_create_customer()
+    if not customer_id:
         return
 
-    address = input("Address: ").strip()
-    if not address:
-        print("❌ Address cannot be empty")
-        return
-
-    mobile = input("Mobile Number: ").strip()
-    if not is_valid_mobile(mobile):
-        print("❌ Invalid phone number (must be 10 digits)")
-        return
-
-    # ✅ SAFE ACCOUNT TYPE INPUT
+    # ✅ Scheme selection
     while True:
         acc_type = input("Account Type (SB / RD / TD): ").upper().strip()
         if acc_type in ("SB", "RD", "TD"):
             break
         print("❌ Invalid account type. Please enter SB, RD or TD.")
 
-    acc_no = generate_account_number(acc_type)
+    # ✅ ONE SB ACCOUNT ONLY per customer
+    if acc_type == "SB":
+        cur.execute("""
+            SELECT acc_no FROM accounts
+            WHERE customer_id=%s AND acc_type='SB' AND status='Active'
+        """, (customer_id,))
+        sb_exists = cur.fetchone()
 
-    # ================= SCHEME LOGIC =================
+        if sb_exists:
+            print("❌ This customer already has an active SB account!")
+            print("Existing SB Account No:", sb_exists[0])
+            return
 
+    # ✅ Generate unique 12-digit account number
+    while True:
+        acc_no = generate_account_number(acc_type)  # 12 digit
+        cur.execute("SELECT acc_no FROM accounts WHERE acc_no=%s", (acc_no,))
+        if not cur.fetchone():
+            break
+
+    # Fetch customer info
+    cur.execute("SELECT name, address, mobile FROM customers WHERE customer_id=%s", (customer_id,))
+    name, address, mobile = cur.fetchone()
+
+    # ================= ACCOUNT RULES =================
     if acc_type == "SB":
         try:
             balance = float(input("Opening Balance (Min 500): "))
@@ -142,13 +288,13 @@ def create_account():
         try:
             monthly = float(input("Monthly RD Amount: "))
             if monthly <= 0:
-                print("❌ Invalid RD amount")
+                print("❌ Invalid RD monthly amount")
                 return
         except:
             print("❌ Invalid amount")
             return
 
-        balance = monthly          # first installment credited
+        balance = monthly
         months = 1
 
     elif acc_type == "TD":
@@ -161,38 +307,35 @@ def create_account():
             print("❌ Invalid amount")
             return
 
-    # ================= DATABASE INSERT =================
-
+    # ================= INSERT INTO DB =================
     try:
         cur.execute(
             """
             INSERT INTO accounts
-            (acc_no, name, address, mobile, acc_type, balance, status)
-            VALUES (%s, %s, %s, %s, %s, %s, 'Active')
+            (acc_no, name, address, mobile, acc_type, balance, customer_id, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Active')
             """,
-            (acc_no, name, address, mobile, acc_type, balance)
+            (acc_no, name, address, mobile, acc_type, balance, customer_id)
         )
 
         if acc_type == "RD":
             cur.execute(
-                """
-                INSERT INTO rd_details
-                (acc_no, monthly_amount, months_completed)
-                VALUES (%s, %s, %s)
-                """,
+                "INSERT INTO rd_details (acc_no, monthly_amount, months_completed) VALUES (%s,%s,%s)",
                 (acc_no, monthly, months)
             )
 
         con.commit()
 
-        print("\n✅ Account Created Successfully")
+        print("\n✅ Account Created Successfully!")
+        print("Customer ID (CIF):", customer_id)
         print("Account Number:", acc_no)
         print("Account Type:", acc_type)
-        print("Opening Balance:", balance)
 
     except Exception as e:
         con.rollback()
         print("❌ Error creating account:", e)
+
+
 
 
 # ----------------------------------------------------
@@ -359,50 +502,131 @@ def search_account():
 1. Search by Name
 2. Search by Account Number
 3. Search by Mobile Number
+4. Search by Aadhaar Number ✅ (NEW)
 0. Back
 """)
-        ch = input("Enter Choice: ")
+        ch = input("Enter Choice: ").strip()
 
+        # -------------------------
+        # 1) Search by Name
+        # -------------------------
         if ch == '1':
-            name = input("Enter Name: ")
+            name = input("Enter Name: ").strip()
             cur.execute(
                 "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE name LIKE %s",
                 ('%' + name + '%',)
             )
             rows = cur.fetchall()
 
+            if not rows:
+                print("❌ No account found")
+            else:
+                print("\nACC NO | NAME | TYPE | BALANCE | STATUS")
+                print("----------------------------------------")
+                for r in rows:
+                    print(r)
+
+        # -------------------------
+        # 2) Search by Account Number
+        # -------------------------
         elif ch == '2':
-            acc = input("Enter Account Number: ")
+            acc = input("Enter Account Number: ").strip()
             cur.execute(
                 "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE acc_no=%s",
                 (acc,)
             )
             rows = cur.fetchall()
 
+            if not rows:
+                print("❌ No account found")
+            else:
+                print("\nACC NO | NAME | TYPE | BALANCE | STATUS")
+                print("----------------------------------------")
+                for r in rows:
+                    print(r)
+
+        # -------------------------
+        # 3) Search by Mobile Number
+        # -------------------------
         elif ch == '3':
-            mobile = input("Enter Mobile Number: ")
+            mobile = input("Enter Mobile Number: ").strip()
+            if not is_valid_mobile(mobile):
+                print("❌ Invalid mobile number (must be 10 digits)")
+                continue
+
             cur.execute(
                 "SELECT acc_no,name,acc_type,balance,status FROM accounts WHERE mobile=%s",
                 (mobile,)
             )
             rows = cur.fetchall()
 
+            if not rows:
+                print("❌ No account found")
+            else:
+                print("\nACC NO | NAME | TYPE | BALANCE | STATUS")
+                print("----------------------------------------")
+                for r in rows:
+                    print(r)
+
+        # -------------------------
+        # 4) Search by Aadhaar Number ✅ NEW
+        # -------------------------
+        elif ch == '4':
+            aadhaar = input("Enter Aadhaar Number (12 digits): ").strip()
+
+            if not (aadhaar.isdigit() and len(aadhaar) == 12):
+                print("❌ Invalid Aadhaar number (must be 12 digits)")
+                continue
+
+            # ✅ Find customer using Aadhaar
+            cur.execute(
+                "SELECT customer_id, name, address, mobile FROM customers WHERE aadhaar=%s",
+                (aadhaar,)
+            )
+            customer = cur.fetchone()
+
+            if not customer:
+                print("❌ No customer found with this Aadhaar number")
+                continue
+
+            customer_id, cname, caddress, cmobile = customer
+
+            print("\n✅ CUSTOMER DETAILS FOUND")
+            print("--------------------------")
+            print("Customer ID (CIF):", customer_id)
+            print("Name:", cname)
+            print("Address:", caddress)
+            print("Mobile:", cmobile)
+
+            # ✅ Fetch all accounts linked to this CIF
+            cur.execute(
+                """
+                SELECT acc_no, acc_type, balance, status
+                FROM accounts
+                WHERE customer_id=%s
+                """,
+                (customer_id,)
+            )
+            accounts = cur.fetchall()
+
+            if not accounts:
+                print("\n❌ No accounts linked to this customer.")
+            else:
+                print("\n✅ LINKED ACCOUNTS")
+                print("--------------------------")
+                print("ACC NO | TYPE | BALANCE | STATUS")
+                print("--------------------------------")
+                for a in accounts:
+                    print(a)
+
+        # -------------------------
+        # Back
+        # -------------------------
         elif ch == '0':
             break
 
         else:
-            print("Invalid Choice")
-            continue
-
-        if not rows:
-            print("No account found")
-        else:
-            print("\nACC NO | NAME | TYPE | BALANCE | STATUS")
-            print("----------------------------------------")
-            for r in rows:
-                print(r)
-
-
+            print("❌ Invalid Choice")
 # ----------------------------------------------------
 
 def close_account():
@@ -783,6 +1007,9 @@ def schemes_menu():
 
 
 # ================= MAIN MENU =================
+session = login()
+if not session:
+    exit()
 
 while True:
     print("""
@@ -796,6 +1023,7 @@ while True:
 7. Close Account
 8. Schemes Menu
 9. Post Office Forms
+10. Logout
 0. Exit
 """)
 
@@ -810,6 +1038,12 @@ while True:
     elif ch == '7': close_account()
     elif ch == '8': schemes_menu()
     elif ch == '9': forms_menu()
+    elif ch == '10':
+     print("✅ Logged out successfully!")
+     session = login()
+     if not session:
+        break
+
     elif ch == '0':
         print("Thank You")
         break
