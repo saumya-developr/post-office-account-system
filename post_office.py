@@ -5,7 +5,6 @@ from decimal import Decimal
 import webbrowser
 import os
 import hashlib
-import getpass
 
 
 # ================= DATABASE CONNECTION =================
@@ -41,6 +40,40 @@ FORMS_LOCAL = {
 }
 
 
+def rd_info():
+    print("\n=== RD SCHEME INFORMATION ===")
+    print("Scheme Name      : Recurring Deposit (RD)")
+    print("Account Prefix   : 020xxxxxxxxx (12 digits)")
+    print("Interest Rate    : 6.7% (Compound) [1 Oct 2025 – 31 Dec 2025]")
+    print("Tenure           : 60 months (5 years)")
+    print("Maturity Rule    : Full maturity after 60 installments")
+    print("Premature Closure: Allowed after 36 months (reduced benefit)")
+    print("Deposit Type     : Monthly fixed installment")
+    print("Main Operations  : Monthly Deposit, Interest, Schedule, Maturity Transfer")
+
+
+def sb_info():
+    print("\n=== SB SCHEME INFORMATION ===")
+    print("Scheme Name      : Savings Bank (SB)")
+    print("Account Prefix   : 010xxxxxxxxx (12 digits)")
+    print("Interest Rate    : 4% (Compound) [1 Oct 2025 – 31 Dec 2025]")
+    print("Minimum Balance  : ₹500")
+    print("Deposit/Withdraw : Allowed anytime (as per rules)")
+    print("Main Operations  : Deposit, Withdraw, Interest, Closure")
+
+
+def td_info():
+    print("\n=== TD SCHEME INFORMATION ===")
+    print("Scheme Name      : Time Deposit (TD)")
+    print("Account Prefix   : 030xxxxxxxxx (12 digits)")
+    print("Interest Rate    : 6.9% (Compound) [1 Oct 2025 – 31 Dec 2025]")
+    print("Tenure           : 12 months (1 year)")
+    print("Deposit Type     : One-time lump sum deposit")
+    print("Maturity Rule    : After 1 year, amount transfers to SB and TD closes")
+    print("Main Operations  : Interest, Maturity Transfer/Closure")
+
+
+
 
 
 def hash_password(password: str) -> str:
@@ -57,14 +90,19 @@ def generate_customer_id():
     # 10 digit numeric customer id
     return str(random.randint(1000000000, 9999999999))
 
+
+
+
+
+
+
+
 def login():
     print("\n=== POST OFFICE LOGIN ===")
 
     for attempt in range(1, 4):
         username = input("Username: ").strip()
-
-        # ✅ Hide password typing
-        password = getpass.getpass("Password: ").strip()
+        password = input("Password: ").strip()  # ✅ No getpass → No warning
 
         if not username or not password:
             print("❌ Username/Password cannot be empty")
@@ -86,15 +124,13 @@ def login():
                 print("❌ Your account is inactive. Contact admin.")
                 return None
 
-            print(f"\n✅ Login Successful! Role: {role}")
+            print(f"✅ Login Successful! Role: {role}")
             return {"username": username, "role": role}
 
-        else:
-            print(f"❌ Invalid credentials (Attempt {attempt}/3)")
+        print(f"❌ Invalid credentials (Attempt {attempt}/3)")
 
-    print("\n🚫 Too many failed attempts. Exiting program.")
+    print("🚫 Too many failed attempts. Exiting program.")
     return None
-
 
 
 def forms_menu():
@@ -947,14 +983,26 @@ def rd_menu():
 2. RD Compound Interest
 3. RD Schedule
 4. RD Maturity Transfer
+5. RD Scheme Info ✅
 0. Back
 """)
-        ch = input("Choice: ")
-        if ch == '1': rd_monthly_deposit()
-        elif ch == '2': rd_compound_interest()
-        elif ch == '3': rd_schedule()
-        elif ch == '4': rd_to_sb_transfer()
-        elif ch == '0': break
+        ch = input("Choice: ").strip()
+
+        if ch == '1':
+            rd_monthly_deposit()
+        elif ch == '2':
+            rd_compound_interest()
+        elif ch == '3':
+            rd_schedule()
+        elif ch == '4':
+            rd_to_sb_transfer()
+        elif ch == '5':
+            rd_info()
+        elif ch == '0':
+            break
+        else:
+            print("❌ Invalid choice")
+
 
 def sb_menu():
     while True:
@@ -964,27 +1012,50 @@ def sb_menu():
 2. Withdraw
 3. Interest
 4. Account Closure
+5. SB Scheme Info ✅
 0. Back
 """)
-        ch = input("Choice: ")
-        if ch == '1': deposit()
-        elif ch == '2': withdraw()
-        elif ch == '3': calculate_interest()
-        elif ch == '4': close_account()
-        elif ch == '0': break
+        ch = input("Choice: ").strip()
+
+        if ch == '1':
+            deposit()
+        elif ch == '2':
+            withdraw()
+        elif ch == '3':
+            calculate_interest()
+        elif ch == '4':
+            close_account()
+        elif ch == '5':
+            sb_info()
+        elif ch == '0':
+            break
+        else:
+            print("❌ Invalid choice")
+
+
 
 def td_menu():
     while True:
         print("""
 --- TD SCHEME ---
 1. Interest Calculation
-2. Maturity Closure
+2. TD Maturity Transfer to SB
+3. TD Scheme Info ✅
 0. Back
 """)
-        ch = input("Choice: ")
-        if ch == '1': calculate_interest()
-        elif ch == '2': td_maturity_transfer()
-        elif ch == '0': break
+        ch = input("Choice: ").strip()
+
+        if ch == '1':
+            calculate_interest()
+        elif ch == '2':
+            td_maturity_transfer()   # ✅ ensure this function exists
+        elif ch == '3':
+            td_info()
+        elif ch == '0':
+            break
+        else:
+            print("❌ Invalid choice")
+
 
 def schemes_menu():
     while True:
