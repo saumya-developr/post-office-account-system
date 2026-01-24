@@ -85,10 +85,8 @@ def is_valid_aadhaar(aadhaar):
     return aadhaar.isdigit() and len(aadhaar) == 12
 
 
-
 def generate_customer_id():
-    # 10 digit numeric customer id
-    return str(random.randint(1000000000, 9999999999))
+    return str(random.randint(100000000, 999999999))   # ✅ 9 digits
 
 
 
@@ -100,37 +98,47 @@ def generate_customer_id():
 def login():
     print("\n=== POST OFFICE LOGIN ===")
 
-    for attempt in range(1, 4):
-        username = input("Username: ").strip()
-        password = input("Password: ").strip()  # ✅ No getpass → No warning
+    try:
+        for attempt in range(1, 4):
+            username = input("Username: ").strip()
 
-        if not username or not password:
-            print("❌ Username/Password cannot be empty")
-            continue
+            if username == "":
+                print("❌ Username cannot be empty")
+                continue
 
-        password_hash = hash_password(password)
+            password = input("Password: ").strip()
 
-        cur.execute("""
-            SELECT role, status
-            FROM users
-            WHERE username=%s AND password_hash=%s
-        """, (username, password_hash))
+            if password == "":
+                print("❌ Password cannot be empty")
+                continue
 
-        user = cur.fetchone()
+            password_hash = hash_password(password)
 
-        if user:
-            role, status = user
-            if status != "ACTIVE":
-                print("❌ Your account is inactive. Contact admin.")
-                return None
+            cur.execute("""
+                SELECT role, status
+                FROM users
+                WHERE username=%s AND password_hash=%s
+            """, (username, password_hash))
 
-            print(f"✅ Login Successful! Role: {role}")
-            return {"username": username, "role": role}
+            user = cur.fetchone()
 
-        print(f"❌ Invalid credentials (Attempt {attempt}/3)")
+            if user:
+                role, status = user
+                if status != "ACTIVE":
+                    print("❌ Your account is inactive. Contact admin.")
+                    return None
 
-    print("🚫 Too many failed attempts. Exiting program.")
-    return None
+                print(f"\n✅ Login Successful! Role: {role}")
+                return {"username": username, "role": role}
+
+            print(f"❌ Invalid credentials (Attempt {attempt}/3)")
+
+        print("\n🚫 Too many failed attempts. Exiting program.")
+        return None
+
+    except KeyboardInterrupt:
+        print("\n✅ Exiting program...")
+        return None
 
 
 def forms_menu():
@@ -197,8 +205,8 @@ def get_or_create_customer():
 
     # ✅ CASE 1: Customer ID is given → fetch details directly
     if customer_id != "":
-        if not (customer_id.isdigit() and len(customer_id) == 10):
-            print("❌ Invalid Customer ID (must be 10 digits)")
+        if not (customer_id.isdigit() and len(customer_id) == 9):
+            print("❌ Invalid Customer ID (must be 9 digits)")
             return None
 
         cur.execute(
@@ -1081,9 +1089,9 @@ def schemes_menu():
 session = login()
 if not session:
     exit()
-
-while True:
-    print("""
+try:
+    while True:
+        print("""
 === POST OFFICE ACCOUNT SYSTEM ===
 1. Open Account
 2. Deposit
@@ -1093,30 +1101,31 @@ while True:
 6. Search Account
 7. Close Account
 8. Schemes Menu
-9. Post Office Forms
-10. Logout
 0. Exit
 """)
 
-    ch = input("Enter Choice: ")
+        ch = input("Enter Choice: ").strip()
 
-    if ch == '1': create_account()
-    elif ch == '2': deposit()
-    elif ch == '3': withdraw()
-    elif ch == '4': balance_enquiry()
-    elif ch == '5': calculate_interest()
-    elif ch == '6': search_account()
-    elif ch == '7': close_account()
-    elif ch == '8': schemes_menu()
-    elif ch == '9': forms_menu()
-    elif ch == '10':
-     print("✅ Logged out successfully!")
-     session = login()
-     if not session:
-        break
+        if ch == '1': create_account()
+        elif ch == '2': deposit()
+        elif ch == '3': withdraw()
+        elif ch == '4': balance_enquiry()
+        elif ch == '5': calculate_interest()
+        elif ch == '6': search_account()
+        elif ch == '7': close_account()
+        elif ch == '8': schemes_menu()
+        elif ch == '0':
+            print("✅ Exiting program...")
+            break
+        else:
+            print("❌ Invalid Choice")
 
-    elif ch == '0':
-        print("Thank You")
-        break
-    else:
-        print("Invalid Choice")
+except KeyboardInterrupt:
+    print("\n✅ Exiting program...")
+
+finally:
+    try:
+        cur.close()
+        con.close()
+    except:
+        pass
