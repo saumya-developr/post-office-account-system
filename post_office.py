@@ -1086,12 +1086,12 @@ def schemes_menu():
 
 
 # ================= MAIN MENU =================
-session = login()
-if not session:
-    exit()
-try:
-    while True:
-        print("""
+def main_menu():
+    global session
+
+    try:
+        while True:
+            print("""
 === POST OFFICE ACCOUNT SYSTEM ===
 1. Open Account
 2. Deposit
@@ -1101,31 +1101,68 @@ try:
 6. Search Account
 7. Close Account
 8. Schemes Menu
+9. Post Office Forms
+10. Logout
 0. Exit
 """)
 
-        ch = input("Enter Choice: ").strip()
+            ch = input("Enter Choice: ").strip()
 
-        if ch == '1': create_account()
-        elif ch == '2': deposit()
-        elif ch == '3': withdraw()
-        elif ch == '4': balance_enquiry()
-        elif ch == '5': calculate_interest()
-        elif ch == '6': search_account()
-        elif ch == '7': close_account()
-        elif ch == '8': schemes_menu()
-        elif ch == '0':
-            print("✅ Exiting program...")
-            break
-        else:
-            print("❌ Invalid Choice")
+            if ch == '1':
+                create_account()
 
-except KeyboardInterrupt:
-    print("\n✅ Exiting program...")
+            elif ch == '2':
+                deposit()
 
-finally:
-    try:
-        cur.close()
-        con.close()
-    except:
-        pass
+            elif ch == '3':
+                withdraw()
+
+            elif ch == '4':
+                balance_enquiry()
+
+            elif ch == '5':
+                calculate_interest()
+
+            elif ch == '6':
+                search_account()
+
+            elif ch == '7':
+                close_account()
+
+            elif ch == '8':
+                schemes_menu()
+
+            elif ch == '9':
+                forms_menu()   # ✅ your forms function
+
+            elif ch == '10':
+                print("\n✅ Logged out successfully!\n")
+                session = login()
+                if not session:
+                    print("✅ Exiting program...")
+                    break
+
+            elif ch == '0':
+                print("✅ Exiting program...")
+                break
+
+            else:
+                print("❌ Invalid Choice")
+
+    except KeyboardInterrupt:
+        print("\n✅ Exiting program...")
+
+    finally:
+        try:
+            cur.close()
+            con.close()
+        except:
+            pass
+
+session = login()
+if not session:
+    print("✅ Exiting program...")
+    exit()
+
+main_menu()
+
