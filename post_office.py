@@ -703,7 +703,7 @@ def close_account():
 
 # ================= RD SCHEME =================
 def rd_monthly_deposit():
-    acc = input("RD Account Number: ")
+    acc = input("RD Account Number: ").strip()
 
     cur.execute("""
         SELECT r.monthly_amount, r.months_completed, a.status
@@ -713,30 +713,51 @@ def rd_monthly_deposit():
     """, (acc,))
     d = cur.fetchone()
 
-    if not d or d[2] == "Closed":
-        print("Invalid / Closed RD Account")
+    if not d:
+        print("❌ RD account not found")
         return
 
-    monthly_amount = float(d[0])
+    monthly_amount, months_completed, status = d
 
+    if status == "Closed":
+        print("❌ RD account is closed")
+        return
+
+    monthly_amount = float(monthly_amount)
+    months_completed = int(months_completed)
+
+    # ✅ If already completed 60 installments
+    if months_completed >= 60:
+        print("✅ RD account already completed 60 installments (Matured).")
+        print("No further deposit allowed.")
+        return
+
+    # ✅ Ask installments
     try:
         installments = int(input("Enter number of installments to deposit: "))
         if installments <= 0:
-            print("Invalid number of installments")
+            print("❌ Invalid number of installments")
             return
     except:
-        print("Invalid input")
+        print("❌ Invalid input")
+        return
+
+    # ✅ Remaining installments check
+    remaining = 60 - months_completed
+
+    if installments > remaining:
+        print(f"❌ Only {remaining} installment(s) remaining.")
+        print("Deposit not allowed beyond 60 installments.")
         return
 
     total_deposit = monthly_amount * installments
 
-    # Update balance
+    # ✅ Update balance + months completed
     cur.execute(
         "UPDATE accounts SET balance = balance + %s WHERE acc_no = %s",
         (total_deposit, acc)
     )
 
-    # Update installments
     cur.execute(
         "UPDATE rd_details SET months_completed = months_completed + %s WHERE acc_no = %s",
         (installments, acc)
@@ -744,9 +765,11 @@ def rd_monthly_deposit():
 
     con.commit()
 
-    print("RD Deposit Successful")
+    print("\n✅ RD Deposit Successful")
     print("Installments Deposited:", installments)
     print("Amount Deposited:", total_deposit)
+    print("Total Installments Completed:", months_completed + installments)
+
 
 
 # ----------------------------------------------------
