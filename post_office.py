@@ -330,16 +330,25 @@ def create_account():
 
     elif acc_type == "RD":
         try:
-            monthly = float(input("Monthly RD Amount: "))
-            if monthly <= 0:
-                print("❌ Invalid RD monthly amount")
-                return
-        except:
-            print("❌ Invalid amount")
+         monthly = float(input("Monthly RD Amount (Min 100 & Multiple of 100): "))
+
+        # ❌ Minimum Check
+         if monthly < 100:
+            print("RD minimum amount is 100")
             return
+
+        # ❌ Multiple of 100 Check
+         if monthly % 100 != 0:
+            print("RD amount must be in multiples of 100 (100, 200, 300...)")
+            return
+
+        except:
+         print("Invalid amount")
+         return
 
         balance = monthly
         months = 1
+
 
     elif acc_type == "TD":
         try:
