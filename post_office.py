@@ -66,7 +66,7 @@ class DatabaseLogger:
 
 
 # ================= DATABASE CONNECTION =================
-print("Program started")
+print("Program started ...")
 
 try:
     con = mysql.connector.connect(
