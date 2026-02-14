@@ -1,0 +1,3 @@
+2026-02-14 22:05:13,814 - INFO - [System.startup] Database connected successfully
+2026-02-14 22:05:13,878 - INFO - [Authentication.login] Login attempt started
+2026-02-14 22:05:27,352 - INFO - [Authentication.login] Successful login: postmaster (Role: POSTMASTER)
